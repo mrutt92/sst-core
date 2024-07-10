@@ -13,6 +13,14 @@ if (NOT TARGET SST::SST)
     IMPORTED_LOCATION @prefix@/bin/sst
   )
 endif()
+
+if (NOT TARGET SST::SSTRegister)
+  add_executable(SST::SSTRegister IMPORTED)
+  set_target_properties(SST::SSTRegister PROPERTIES
+    IMPORTED_LOCATION @prefix@/bin/sst-register
+    )
+endif()
+
 macro(add_sst_library NAME)
   if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CMAKE_MODULE_LINKER_FLAGS "-undefined dynamic_lookup")
@@ -22,3 +30,5 @@ macro(add_sst_library NAME)
   #ensure at least C++11, this can be overriden with higher
   target_link_libraries(${NAME} PUBLIC SST::SSTCore)
 endmacro()
+
+set(SST_INSTALL_PREFIX @prefix@)
