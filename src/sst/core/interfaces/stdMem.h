@@ -231,6 +231,8 @@ public:
     class FlushResp;        /* Response to flush request */
     class FlushLine;        /* Flush a line from cache */
     class FlushLineResp;    /* Response to FlushLine */
+    class InvLine;          /* Invalidate a line from cache */
+    class InvLineResp;      /* Response to InvLine */
     class ReadLock;         /* Read and lock an address */
     class WriteUnlock;      /* Write and unlock an address */
     class LoadLink;         /* First part of LLSC, read and track access atomicity */
@@ -583,9 +585,9 @@ public:
             return ss.str();
         }
 
-        Addr pAddr;    /* Physical address (an address that this cache responds to) */
+        Addr pAddr;    /* Physical address (used for routing) */
         Addr vAddr;    /* Virtual address */
-        Addr lineId;   /* Line ID */
+        Addr lineId;   /* Line ID, this is the cache line to flush */
         Addr iPtr;     /* Instruction pointer */
         uint32_t tid;  /* Thread ID */
     };
@@ -613,6 +615,65 @@ public:
             str << ", VirtAddr: 0x" << vAddr << ", LineID: 0x" << lineId;
             str << ", InstPtr: 0x" << std::hex << iPtr << ", ThreadID: " << std::dec << tid;
             return str.str();
+        }
+
+        Addr pAddr;    /* Physical address */
+        Addr vAddr;    /* Virtual address */
+        Addr lineId;   /* Line ID */
+        Addr iPtr;     /* Instruction pointer */
+        uint32_t tid;  /* Thread ID */
+    };
+
+    /**
+     * Invalidate a line from cache
+     */
+    class InvLine : public Request {
+    public:
+        InvLine(Addr physAddr, Addr lineId, flags_t flags = 0, Addr vAddr = 0, Addr instPtr = 0, uint32_t tid = 0)
+            : Request(flags), pAddr(physAddr), vAddr(vAddr), lineId(lineId), iPtr(instPtr), tid(tid) {}
+        virtual ~InvLine() {}
+        Request* makeResponse() override { return new InvLineResp(this); }
+        bool needsResponse() override { return true; }
+        SST::Event* convert(RequestConverter* converter) override { return converter->convert(this); }
+        void handle(RequestHandler* handler) override { return handler->handle(this); }
+        std::string getString() override {
+            std::ostringstream ss;
+            ss << "ID :" << id << ", Type: InvLine, Flags: [" << getFlagString() << "], PhysAddr: 0x" << std::hex
+               << pAddr;
+            ss << ", VirtAddr: 0x" << vAddr << ", LineID: 0x" << lineId << ", InstPtr: 0x" << iPtr << ", ThreadID: "
+                << std::dec << tid;
+            return ss.str();
+        }
+        Addr pAddr;    /* Physical address (used for routing) */
+        Addr vAddr;    /* Virtual address */
+        Addr lineId;   /* Line ID, this is the cache line to invalidate */
+        Addr iPtr;     /* Instruction pointer */
+        uint32_t tid;  /* Thread ID */
+    };
+
+    /**
+     * Response to an InvLine request
+     */
+    class InvLineResp : public Request {
+    public:
+        InvLineResp(id_t id, Addr physAddr, Addr lineId, flags_t flags = 0, Addr vAddr = 0, Addr instPtr = 0,
+                    uint32_t tid = 0)
+            : Request(id, flags), pAddr(physAddr), vAddr(vAddr), lineId(lineId), iPtr(instPtr), tid(tid) {}
+        InvLineResp(InvLine* il, flags_t newFlags = 0)
+            : Request(il->getID(), il->getAllFlags() | newFlags), pAddr(il->pAddr), vAddr(il->vAddr), lineId(il->lineId),
+              iPtr(il->iPtr), tid(il->tid) {}
+        virtual ~InvLineResp() {}
+        Request* makeResponse() override { return nullptr; }
+        bool needsResponse() override { return false; }
+        SST::Event* convert(RequestConverter* converter) override { return converter->convert(this); }
+        void handle(RequestHandler* handler) override { return handler->handle(this); }
+        std::string getString() override {
+            std::ostringstream ss;
+            ss << "ID :" << id << ", Type: InvLineResp, Flags: [" << getFlagString() << "], PhysAddr: 0x" << std::hex
+               << pAddr;
+            ss << ", VirtAddr: 0x" << vAddr << ", LineID: 0x" << lineId << ", InstPtr: 0x" << iPtr << ", ThreadID: "
+                << std::dec << tid;
+            return ss.str();
         }
 
         Addr pAddr;    /* Physical address */
@@ -1127,6 +1188,8 @@ public:
         virtual SST::Event* convert(InvNotify* request)        = 0;
         virtual SST::Event* convert(FlushLine * request)       = 0;
         virtual SST::Event* convert(FlushLineResp * request)   = 0;
+        virtual SST::Event* convert(InvLine * request)         = 0;
+        virtual SST::Event* convert(InvLineResp * request)     = 0;
     };
 
     /* Class for implementation-specific handler functions */
@@ -1168,6 +1231,14 @@ public:
         virtual void handle(FlushLineResp* UNUSED(request))
         {
             out->fatal(CALL_INFO, -1, "Error: RequestHandler for FlushLineResp requests is not implemented\n");
+        }
+        virtual void handle(InvLine* UNUSED(request))
+        {
+            out->fatal(CALL_INFO, -1, "Error: RequestHandler for InvLine requests is not implemented\n");
+        }
+        virtual void handle(InvLineResp* UNUSED(request))
+        {
+            out->fatal(CALL_INFO, -1, "Error: RequestHandler for InvLineResp requests is not implemented\n");
         }
         virtual void handle(ReadLock* UNUSED(request))
         {
