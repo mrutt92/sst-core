@@ -229,6 +229,8 @@ public:
     class WriteResp;        /* Response to write requests */
     class FlushAddr;        /* Flush an address from cache */
     class FlushResp;        /* Response to flush request */
+    class FlushLine;        /* Flush a line from cache */
+    class FlushLineResp;    /* Response to FlushLine */
     class ReadLock;         /* Read and lock an address */
     class WriteUnlock;      /* Write and unlock an address */
     class LoadLink;         /* First part of LLSC, read and track access atomicity */
@@ -558,6 +560,66 @@ public:
         uint64_t size;  /* Number of bytes to invalidate */
         Addr     iPtr;  /* Instruction pointer */
         uint32_t tid;   /* Thread ID */
+    };
+
+    /**
+     * Flush a line from a cache
+     */
+    class FlushLine : public Request {
+    public:
+        FlushLine(Addr physAddr, Addr lineId, flags_t flags = 0, Addr vAddr = 0, Addr instPtr = 0, uint32_t tid = 0)
+            : Request(flags), pAddr(physAddr), vAddr(vAddr), lineId(lineId), iPtr(instPtr), tid(tid) {}
+        virtual ~FlushLine() {}
+        Request* makeResponse() override { return new FlushLineResp(this); }
+        bool needsResponse() override { return true; }
+        SST::Event* convert(RequestConverter* converter) override { return converter->convert(this); }
+        void handle(RequestHandler* handler) override { return handler->handle(this); }
+        std::string getString() override {
+            std::ostringstream ss;
+            ss << "ID :" << id << ", Type: FlushLine, Flags: [" << getFlagString() << "], PhysAddr: 0x" << std::hex
+               << pAddr;
+            ss << ", VirtAddr: 0x" << vAddr << ", LineID: 0x" << lineId << ", InstPtr: 0x" << iPtr << ", ThreadID: "
+               << std::dec << tid;
+            return ss.str();
+        }
+
+        Addr pAddr;    /* Physical address (an address that this cache responds to) */
+        Addr vAddr;    /* Virtual address */
+        Addr lineId;   /* Line ID */
+        Addr iPtr;     /* Instruction pointer */
+        uint32_t tid;  /* Thread ID */
+    };
+
+    /**
+     * Response to a FlushLine request
+     */
+    class FlushLineResp : public Request {
+    public:
+        FlushLineResp(id_t id, Addr physAddr, Addr lineId, flags_t flags = 0, Addr vAddr = 0, Addr instPtr = 0,
+                      uint32_t tid = 0)
+            : Request(id, flags), pAddr(physAddr), vAddr(vAddr), lineId(lineId), iPtr(instPtr), tid(tid) {}
+        FlushLineResp(FlushLine* fl, flags_t newFlags = 0)
+            : Request(fl->getID(), fl->getAllFlags() | newFlags), pAddr(fl->pAddr), vAddr(fl->vAddr), lineId(fl->lineId),
+              iPtr(fl->iPtr), tid(fl->tid) {}
+        Request* makeResponse() override { return nullptr; }
+        bool needsResponse() override { return false; }
+        SST::Event* convert(RequestConverter* converter) override { return converter->convert(this); }
+        void handle(RequestHandler* handler) override { return handler->handle(this); }
+        std::string getString() override
+        {
+            std::ostringstream str;
+            str << "ID :" << id << ", Type: FlushLineResp, Flags: [" << getFlagString() << "], PhysAddr: 0x" << std::hex
+                << pAddr;
+            str << ", VirtAddr: 0x" << vAddr << ", LineID: 0x" << lineId;
+            str << ", InstPtr: 0x" << std::hex << iPtr << ", ThreadID: " << std::dec << tid;
+            return str.str();
+        }
+
+        Addr pAddr;    /* Physical address */
+        Addr vAddr;    /* Virtual address */
+        Addr lineId;   /* Line ID */
+        Addr iPtr;     /* Instruction pointer */
+        uint32_t tid;  /* Thread ID */
     };
 
     /**
@@ -1063,6 +1125,8 @@ public:
         virtual SST::Event* convert(CustomReq* request)        = 0;
         virtual SST::Event* convert(CustomResp* request)       = 0;
         virtual SST::Event* convert(InvNotify* request)        = 0;
+        virtual SST::Event* convert(FlushLine * request)       = 0;
+        virtual SST::Event* convert(FlushLineResp * request)   = 0;
     };
 
     /* Class for implementation-specific handler functions */
@@ -1096,6 +1160,14 @@ public:
         virtual void handle(FlushResp* UNUSED(request))
         {
             out->fatal(CALL_INFO, -1, "Error: RequestHandler for FlushResp requests is not implemented\n");
+        }
+        virtual void handle(FlushLine* UNUSED(request))
+        {
+            out->fatal(CALL_INFO, -1, "Error: RequestHandler for FlushLine requests is not implemented\n");
+        }
+        virtual void handle(FlushLineResp* UNUSED(request))
+        {
+            out->fatal(CALL_INFO, -1, "Error: RequestHandler for FlushLineResp requests is not implemented\n");
         }
         virtual void handle(ReadLock* UNUSED(request))
         {
